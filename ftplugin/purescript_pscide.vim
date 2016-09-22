@@ -11,6 +11,10 @@ if !exists('g:psc_ide_suggestions')
 endif
 
 " Options -------------------------------------------------------------------
+if !exists('g:psc_ide_server_per_dir')
+  let g:psc_ide_server_per_dir = 0
+endif
+
 if !exists('g:psc_ide_log_level')
   let g:psc_ide_log_level = 0
 endif
@@ -19,8 +23,10 @@ if !exists('g:psc_ide_auto_imports')
   let g:psc_ide_auto_imports = 0
 endif
 
-if !exists('g:psc_ide_server_port')
-  let g:psc_ide_server_port = 4242
+if !exists('g:psc_ide_server_port') 
+  if !g:psc_ide_server_per_dir
+    let g:psc_ide_server_port = 4242
+  endif
 endif
 
 " Adding iskeyword symbols to improve GetWordUnderCursor ---------------------
@@ -62,7 +68,12 @@ function! PSCIDEstart(silent)
     return
   endif
 
-  call s:log("PSCIDEstart: Starting psc-ide-server at " . dir, loglevel)
+  if !g:psc_ide_server_port && g:psc_ide_server_per_dir
+    let g:psc_ide_server_port = call s:selecIdePort(dir)
+  endif
+
+  call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .
+             g:psc_ide_server_port, loglevel)
 
   if has('win16') || has('win32') || has('win64')
     let command = "start /b psc-ide-server src/**/*.purs bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir
@@ -984,3 +995,49 @@ endfunction
 function! s:mysystem(a, b)
   return system(a:a, a:b . "\n")
 endfunction
+
+function! s:getIdePort(dir)
+  try 
+    let loaded = call s:loadIdePort(dir)
+    if loaded > 0
+      return loaded
+    else
+      return s:randomPort()
+  catch
+    return s:randomPort()
+  endtry
+endfunction
+
+function! s:randomPort()
+  return 15000 + Rand()
+endfunction
+
+function! s:idePortName(dir) 
+  let sep = (has('win16') || has('win32') || has('win64')) ? '\' : '/'
+  return dir . sep . ".psc-ide-port" 
+endfunction
+
+function! s:loadIdePort(dir) 
+  let filename = call s:idePortName(dir)
+  if filereadable(filename)
+    let stored = str2nr(readfile(filename, 1)[0])
+    if stored > 0 
+      return stored
+    endif
+  endif
+  return 0
+endfunction
+
+function! s:saveIdePort(dir, port) 
+  let filename = call s:idePortName(dir)
+  if filewritable(filename)
+    writefile([port], filename) 
+  endif
+endfunction
+
+" http://stackoverflow.com/questions/12737977/native-vim-random-number-script
+" returns very quazi random number 0-999
+function Rand()
+    return str2nr(matchstr(reltimestr(reltime()), '\v\.@<=\d+')[3:])
+endfunction
+
