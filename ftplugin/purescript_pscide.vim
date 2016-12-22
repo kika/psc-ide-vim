@@ -26,6 +26,8 @@ endif
 if !exists('g:psc_ide_server_port') 
   if !g:psc_ide_server_per_dir
     let g:psc_ide_server_port = 4242
+  else
+    let g:psc_ide_server_port = 0
   endif
 endif
 
@@ -69,11 +71,10 @@ function! PSCIDEstart(silent)
   endif
 
   if !g:psc_ide_server_port && g:psc_ide_server_per_dir
-    let g:psc_ide_server_port = call s:selecIdePort(dir)
+    let g:psc_ide_server_port = s:getIdePort(dir)
   endif
 
-  call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .
-             g:psc_ide_server_port, loglevel)
+  call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .  g:psc_ide_server_port, loglevel)
 
   if has('win16') || has('win32') || has('win64')
     let command = "start /b psc-ide-server src/**/*.purs bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir
@@ -132,6 +133,10 @@ endfunction
 " Tell the psc-ide-server to quit
 command! PSCIDEend call PSCIDEend()
 function! PSCIDEend()
+  let bowerdir = s:findFileRecur('bower.json')
+  if g:psc_ide_server_per_dir && bowerdir != ""
+    call s:saveIdePort(bowerdir, g:psc_ide_server_port)
+  endif
   if s:pscideexternal == 1
     return
   endif
@@ -754,6 +759,8 @@ function! s:callPscIde(input, errorm, isRetry)
     if type(cwdresp2Decoded) == type({}) && cwdresp2Decoded.resultType ==# 'success' 
        \ && cwdresp2Decoded.result == expectedCWD
       call s:log("callPscIde: Server successfully contacted! Loading current module.", 1)
+      let s:pscidestarted = 1
+      let s:pscideexternal = 1
       call PSCIDEload(1)
     else
       call s:log("callPscIde: Server still can't be contacted, aborting...", 1)
@@ -998,11 +1005,12 @@ endfunction
 
 function! s:getIdePort(dir)
   try 
-    let loaded = call s:loadIdePort(dir)
+    let loaded = s:loadIdePort(a:dir)
     if loaded > 0
       return loaded
     else
       return s:randomPort()
+    endif
   catch
     return s:randomPort()
   endtry
@@ -1014,11 +1022,11 @@ endfunction
 
 function! s:idePortName(dir) 
   let sep = (has('win16') || has('win32') || has('win64')) ? '\' : '/'
-  return dir . sep . ".psc-ide-port" 
+  return a:dir . sep . ".psc-ide-port" 
 endfunction
 
 function! s:loadIdePort(dir) 
-  let filename = call s:idePortName(dir)
+  let filename = s:idePortName(a:dir)
   if filereadable(filename)
     let stored = str2nr(readfile(filename, 1)[0])
     if stored > 0 
@@ -1029,10 +1037,9 @@ function! s:loadIdePort(dir)
 endfunction
 
 function! s:saveIdePort(dir, port) 
-  let filename = call s:idePortName(dir)
-  if filewritable(filename)
-    writefile([port], filename) 
-  endif
+  let filename = s:idePortName(a:dir)
+  call s:log("File to write port number: " . filename, 2)
+  call writefile([a:port], filename) 
 endfunction
 
 " http://stackoverflow.com/questions/12737977/native-vim-random-number-script
