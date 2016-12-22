@@ -31,6 +31,10 @@ if !exists('g:psc_ide_server_port')
   endif
 endif
 
+if !exists('g:psc_ide_check_output_dir')
+  let g:psc_ide_check_output_dir = 1
+endif
+
 " Adding iskeyword symbols to improve GetWordUnderCursor ---------------------
 " 124 = |
 setlocal iskeyword+=<,>,$,#,+,-,*,/,%,',&,=,!,:,124,^
@@ -41,6 +45,8 @@ if exists('g:syntastic_extra_filetypes')
 else
   let g:syntastic_extra_filetypes = ['purescript']
 endif
+
+let g:syntastic_purescript_checkers = ['pscide']
 
 " START ----------------------------------------------------------------------
 if !exists('s:pscidestarted')
@@ -77,9 +83,9 @@ function! PSCIDEstart(silent)
   call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .  g:psc_ide_server_port, loglevel)
 
   if has('win16') || has('win32') || has('win64')
-    let command = "start /b psc-ide-server src/**/*.purs bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir
+    let command = "start /b psc-ide-server " . dir . "/src/**/*.purs " . dir . "/bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir
   else
-    let command = "psc-ide-server src/**/*.purs bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir . " > /dev/null &"
+    let command = "psc-ide-server " . dir . "/src/**/*.purs " . dir . "/bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir . " > /dev/null &"
   endif
   let resp = system(command)
 
@@ -153,7 +159,7 @@ function! s:projectProblems()
   if bowerdir == ""
     let problem = "Your project is missing a bower.json file"
     call add(problems, problem)
-  else
+  elseif g:psc_ide_check_output_dir == 1
     let outputcontent = s:globpath(bowerdir, "output/*")
     if len(outputcontent) == 0
       let problem = "Your project's /output directory is empty.  You should run `pulp build` to compile your project."
@@ -438,7 +444,7 @@ function! PSCIDEcaseSplit()
   call s:log('end position: ' . string(e), 3)
   call s:log('type: ' . t, 3)
 
-  let command = {'command': 'caseSplit', 'params': {'line': line, 'begin': b, 'end': e, 'type': t}}
+  let command = {'command': 'caseSplit', 'params': {'line': line, 'begin': b, 'end': e, 'annotations': s:jsonFalse(), 'type': t}}
 
   let resp = s:callPscIde(command, 'Failed to split case for: ' . word, 0)
 
