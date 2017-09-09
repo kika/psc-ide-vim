@@ -31,13 +31,23 @@ set cpo&vim
 
 function! SyntaxCheckers_purescript_pscide_IsAvailable() dict
   if (g:psc_ide_syntastic_mode == 1)
-    let version_output = syntastic#util#system('psc --version')
+    let version_output = syntastic#util#system('purs --version')
     let parsed_ver = syntastic#util#parseVersion(version_output)
     return syntastic#util#versionIsAtLeast(parsed_ver, [0, 8, 5, 0])
   endif
   if (g:psc_ide_syntastic_mode == 2)
     return executable('pulp')
   endif
+endfunction
+
+function! s:rebuildOutputToSyntastic(qflist)
+  return map(a:qflist, {idx, e -> join([ e.type,
+                                       \ e.filename,
+                                       \ e.lnum,
+                                       \ e.col,
+                                       \ e.lnumend,
+                                       \ e.colend,
+                                       \ e.text], ":")})
 endfunction
 
 function! SyntaxCheckers_purescript_pscide_GetLocList() dict
@@ -47,7 +57,8 @@ function! SyntaxCheckers_purescript_pscide_GetLocList() dict
     let loclist = SyntasticMake({
         \ 'makeprg': self.makeprgBuild({'exe': 'echo', 'args': 'a'}), 
         \ 'errorformat': '%t:%f:%l:%c:%m',
-        \ 'Preprocess': function('PSCIDErebuild') })
+        \ 'Preprocess': {args -> s:rebuildOutputToSyntastic(PSCIDErebuild(v:false, ""))}
+	\ })
   endif
 
   if g:psc_ide_syntastic_mode == 2

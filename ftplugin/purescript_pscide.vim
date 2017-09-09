@@ -1,10 +1,13 @@
 " Inits ----------------------------------------------------------------------
-if exists('g:loaded_psc_ide_vim')
+if !exists("b:loaded_psc_ide_vim")
+  let b:loaded_psc_ide_vim = v:true
+else
   finish
 endif
-let g:loaded_psc_ide_vim = 1
 
-let s:tempfile = tempname()
+if !exists("g:loaded_psc_ide_vim")
+  let g:loaded_psc_ide_vim = v:false
+endif
 
 if !exists('g:psc_ide_suggestions')
   let g:psc_ide_suggestions = {}
@@ -35,9 +38,78 @@ if !exists('g:psc_ide_check_output_dir')
   let g:psc_ide_check_output_dir = 1
 endif
 
-" Adding iskeyword symbols to improve GetWordUnderCursor ---------------------
+if !exists('g:psc_ide_notify')
+  let g:psc_ide_notify = v:true
+endif
+
+if !exists('g:psc_ide_filter_prelude_modules')
+  let g:psc_ide_filter_prelude_modules = v:true
+endif
+
+if !exists('g:psc_ide_omnicompletion_filter_modules')
+  let g:psc_ide_omnicompletion_filter_modules = v:false
+endif
+
+if !exists('g:psc_ide_omnicompletion_sort_by')
+  " flex / identifier / module
+  let g:psc_ide_omnicompletion_sort_by = "flex"
+endif
+
+if !exists('g:psc_ide_import_on_completion')
+  let g:psc_ide_import_on_completion = v:true
+endif
+
+if !exists("g:psc_ide_omnicompletion_prefix_filter")
+  " with this option will let purs ide filter by prefix (this disables flex
+  " matching) (tip: use i^xu when searching for a command)
+  let g:psc_ide_omnicompletion_prefix_filter = v:true
+endif
+
+if !exists("g:psc_ide_prelude")
+  let g:psc_ide_prelude = [
+    \ "Control.Applicative",
+    \ "Control.Apply",
+    \ "Control.Bind",
+    \ "Control.Category",
+    \ "Control.Monad",
+    \ "Control.Semigroupoid",
+    \ "Data.Boolean",
+    \ "Data.BooleanAlgebra",
+    \ "Data.Bounded",
+    \ "Data.CommutativeRing",
+    \ "Data.Eq",
+    \ "Data.EuclideanRing",
+    \ "Data.Field",
+    \ "Data.Function",
+    \ "Data.Functor",
+    \ "Data.HeytingAlgebra",
+    \ "Data.NaturalTransformation",
+    \ "Data.Ord",
+    \ "Data.Ordering",
+    \ "Data.Ring",
+    \ "Data.Semigroup",
+    \ "Data.Semiring",
+    \ "Data.Show",
+    \ "Data.Unit",
+    \ "Data.Void",
+    \ ]
+endif
+
+if !exists('g:psc_ide_filter_submodules')
+  " this might hide some modules, e.g. React.DOM.Dynamic will be hidden by
+  " React.DOM module, you can adjust g:psc_ide_filter_submodules_do_not_hide
+  " variable.
+  let g:psc_ide_filter_submodules = v:false
+endif
+
+if !exists("g:psc_ide_filter_submodules_do_not_hide")
+  let g:psc_ide_filter_submodules_do_not_hide = [ "React.DOM.Dynamic" ]
+endif
+
+" Adding iskeyword symbols to improve <cword> expansion- ---------------------
 " 124 = |
-setlocal iskeyword+=<,>,$,#,+,-,*,/,%,',&,=,!,:,124,^
+setl omnifunc=PSCIDEomni
+setl completefunc=PSCIDEcomplete
 
 " Syntastic initialization ---------------------------------------------------
 if exists('g:syntastic_extra_filetypes')
@@ -48,31 +120,110 @@ endif
 
 let g:syntastic_purescript_checkers = ['pscide']
 
-" START ----------------------------------------------------------------------
-if !exists('s:pscidestarted')
-  let s:pscidestarted = 0
-endif
-if !exists('s:pscideexternal')
-  let s:pscideexternal = 0
-endif
-if !exists('s:projectvalid')
-  let s:projectvalid = 0
-endif
+" Check if vim has support for module names (non standard)
+let loclist = getloclist(0)
+call setloclist(0, [{"module": "X"}])
+let s:vim_module_names = has_key(get(getloclist(0), 0, {}), "module")
+call setloclist(0, loclist)
 
+" COMMANDS -------------------------------------------------------------------
+com! -buffer -bang
+      \ PaddClause
+      \ call PSCIDEaddClause(<q-bang>)
+com! -buffer
+      \ PaddImportQualifications
+      \ call PSCIDEaddImportQualifications()
+com! -buffer
+      \ PaddType
+      \ call PSCIDEaddTypeAnnotation(matchstr(getline(line(".")), '^\s*\zs\k\+\ze'))
+com! -buffer -bang
+      \ Papply
+      \ call PSCIDEapplySuggestion(<q-bang>)
+com! -buffer -bang -nargs=1
+      \ Pcase
+      \ call PSCIDEcaseSplit(<q-bang>, <q-args>)
+com! -buffer
+      \ Pcwd
+      \ call PSCIDEcwd()
+com! -buffer
+      \ Pend
+      \ call PSCIDEend()
+com! -buffer -nargs=* -bang -complete=custom,PSCIDEcompleteIdentifier 
+      \ Pgoto
+      \ call PSCIDEgoToDefinition(<q-bang>, len(<q-args>) ? <q-args> : PSCIDEgetKeyword())
+com! -buffer -nargs=* -complete=custom,PSCIDEcompleteIdentifier
+      \ Pimport
+      \ call PSCIDEimportIdentifier(len(<q-args>) ? <q-args> : PSCIDEgetKeyword())
+com! -buffer
+      \ Plist
+      \ call PSCIDElist()
+com! -buffer
+      \ Pimports
+      \ call PSCIDElistImports()
+com! -buffer -bang
+      \ Pload
+      \ call PSCIDEload(0, <q-bang>)
+com! -buffer Pvalidate
+      \ call PSCIDEprojectValidate(v:false)
+com! -buffer -nargs=*
+      \ Pursuit
+      \ call PSCIDEpursuit(len(<q-args>) ? <q-args> : PSCIDEgetKeyword())
+com! -buffer -bang
+      \ Prebuild
+      \ call PSCIDErebuild(v:true, <q-bang>, function("PSCIDEerrors"))
+com! -buffer
+      \ Pstart
+      \ call PSCIDEstart(0)
+com! -buffer -nargs=* -complete=custom,PSCIDEcompleteIdentifier
+      \ Ptype
+      \ call PSCIDEtype(len(<q-args>) ? <q-args> : PSCIDEgetKeyword(), v:true)
+com! -buffer -nargs=1 -complete=custom,PSCIDEcompleteIdentifier
+      \ Psearch
+      \ call PSCIDEsearch(len(<q-args>) ? <q-args> : PSCIDEgetKeyword())
+com! -buffer -nargs=* -complete=custom,PSCIDEimportModuleCompletion
+      \ PimportModule
+      \ call PSCIDEimportModule(len(<q-args>) ? <q-args> : PSCIDEgetKeyword())
+
+" AUTOSTART ------------------------------------------------------------------
+fun! s:autoStart()
+  if exists("g:psc_ide_syntastic_mode") && g:psc_ide_syntastic_mode == 0
+    augroup purescript
+      au! BufWritePost *.purs call PSCIDErebuild(v:true, "", function("PSCIDEerrors"))
+      au! BufAdd *.purs call PSCIDErebuild(v:true, "", function("PSCIDEerrors"))
+    augroup END
+  endif
+
+  silent! call PSCIDEstart(0)
+  silent! call PSCIDEload(0, "")
+endfun
+
+" INTERNALS -------------------------------------------------------------------
+" execute only once so we do not redefine functions when they are running
+if g:loaded_psc_ide_vim
+  call s:autoStart()
+  finish
+endif
+let g:loaded_psc_ide_vim = v:true
+
+augroup purescript_CompleteDone
+  au!
+  au CompleteDone * :call purescript#ide#import#completeDone()
+augroup END
+
+" START ----------------------------------------------------------------------
+let s:psc_ide_server = v:null
 "Looks for bower.json, assumes that's the root directory, starts
-"psc-ide-server in the background
+"`purs ide server` in the background
 "Returns Nothing
-command! PSCIDEstart call PSCIDEstart(0)
 function! PSCIDEstart(silent)
-  if s:pscidestarted == 1 
+  if purescript#ide#started()
     return
   endif
   let loglevel = a:silent == 1 ? 1 : 0
 
-  let dir = s:findFileRecur('bower.json')
-
-  if dir == ''
-    echom "No bower.json found, couldn't start psc-ide-server"
+  let dir = purescript#ide#utils#findRoot()
+  if empty(dir)
+    echom "No psc-package.json or bower.json found, couldn't start `purs ide server`"
     return
   endif
 
@@ -81,18 +232,36 @@ function! PSCIDEstart(silent)
   endif
 
   call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .  g:psc_ide_server_port, loglevel)
+  let command = [ 
+	\ "purs", "ide", "server",
+	\ "-p", g:psc_ide_server_port,
+	\ "-d", dir,
+	\ "src/**/*.purs",
+	\ "bower_components/**/*.purs",
+	\ ]
 
-  if has('win16') || has('win32') || has('win64')
-    let command = "start /b psc-ide-server " . dir . "/src/**/*.purs " . dir . "/bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir
+  exe "lcd" dir
+  call purescript#ide#utils#debug("PSCIDEstart: " . json_encode(command), 3)
+  let jobid = purescript#job#start(
+	\ command,
+	\ { "on_stderr": { ch, msg -> purescript#ide#utils#warn(purescript#ide#utils#toString(msg), v:true) }
+	\ , "on_stdout": { ch, msg -> type(msg) == v:t_string ? purescript#ide#utils#log(msg) : v:null }
+	\ , "on_exit": function("s:onServerExit")
+	\ }
+	\ )
+  lcd -
+
+  sleep 100m
+  call purescript#ide#setStarted(v:true)
+endfunction
+
+let s:onServerExit = v:true
+function! s:onServerExit(ch, msg, ev)
+  if s:onServerExit
+    call purescript#ide#utils#log(purescript#ide#utils#toString(a:ev), v:true)
   else
-    let command = "psc-ide-server " . dir . "/src/**/*.purs " . dir . "/bower_components/**/*.purs -p " . g:psc_ide_server_port . " -d " . dir . " > /dev/null &"
+    call purescript#ide#setStarted(v:false)
   endif
-  let resp = system(command)
-
-  call s:log("PSCIDEstart: Sleeping for 100ms so server can start up", 1)
-  :exe "sleep 100m"
-
-  let s:pscidestarted = 1
 endfunction
 
 if v:version > 704 || (v:version == 704 && has('patch279'))
@@ -106,38 +275,8 @@ else
 endif
 
 
-
-" Find file recursively, return folder ----------------------------------------------------
-function! s:findFileRecur(filename)
-  let iteration = 0
-  let list = []
-  let dir = ''
-
-  " Climbing up on the file tree until we find a bower.json
-  while (len(list) == 0 && iteration < 10)
-    let iteration += 1
-    if iteration == 1
-      let pattern = '.'
-    elseif iteration == 2
-      let pattern = '..'
-    else
-      let pattern = (has('win16') || has('win32') || has('win64')) ? pattern . '\..' : pattern . '/..'
-    endif
-
-    let list = s:globpath(pattern, a:filename)
-
-  endwhile
-
-  if len(list) > 0
-    return fnamemodify(list[0], ':p:h')
-  else
-    return ''
-  endif
-endfunction
-
 " END ------------------------------------------------------------------------
-" Tell the psc-ide-server to quit
-command! PSCIDEend call PSCIDEend()
+" Tell the `purs ide server` to quit
 function! PSCIDEend()
   let bowerdir = s:findFileRecur('bower.json')
   if g:psc_ide_server_per_dir && bowerdir != ""
@@ -146,24 +285,29 @@ function! PSCIDEend()
   if s:pscideexternal == 1
     return
   endif
-  let input = {'command': 'quit'}
-  let resp = s:mysystem("psc-ide-client -p " . g:psc_ide_server_port, s:jsonEncode(input))
-  let s:pscidestarted = 0
-  let s:projectvalid = 0
+  let jobid = purescript#job#start(
+	\ ["purs", "ide", "client", "-p", g:psc_ide_server_port],
+	\ { "on_exit": {job, status, ev -> s:PSCIDEendCallback() }
+	\ , "on_stderr": {err -> purescript#ide#utils#log(string(err), v:true)}
+	\ })
+  call purescript#job#send(jobid, json_encode({'command': 'quit'}) . "\n")
+endfunction
+
+function! s:PSCIDEendCallback() 
+  call purescript#ide#setStarted(v:false)
+  call purescript#ide#setValid(v:false)
 endfunction
 
 function! s:projectProblems()
-  let bowerdir = s:findFileRecur('bower.json')
+  let rootdir = purescript#ide#utils#findRoot()
   let problems = []
 
-  if bowerdir == ""
-    let problem = "Your project is missing a bower.json file"
-    call add(problems, problem)
+  if empty(rootdir)
+    call add(problems, "Your project is missing a bower.json or psc-package.json file")
   elseif g:psc_ide_check_output_dir == 1
-    let outputcontent = s:globpath(bowerdir, "output/*")
+    let outputcontent = s:globpath(rootdir, "output/*")
     if len(outputcontent) == 0
-      let problem = "Your project's /output directory is empty.  You should run `pulp build` to compile your project."
-      call add(problems, problem)
+      call add(problems, "Your project's /output directory is empty.  You should run `pulp build` to compile your project.")
     endif
   endif
 
@@ -171,391 +315,531 @@ function! s:projectProblems()
 endfunction
 
 " LOAD -----------------------------------------------------------------------
-" Load module of current buffer + its dependencies into psc-ide-server
-command! PSCIDEload call PSCIDEload(0)
-function! PSCIDEload(silent)
-  let loglevel = a:silent == 1 ? 1 : 0
+" Load module of current buffer + its dependencies into `purs ide server`
+function! PSCIDEload(logLevel, bang, ...)
+  let hasCb = a:0 >= 1 && type(a:1) == v:t_func
+
+  if hasCb
+    let Fn = { resp -> a:1(s:PSCIDEloadCallback(a:logLevel, resp)) }
+  else
+    let Fn = { resp -> s:PSCIDEloadCallback(a:logLevel, resp) }
+  endif
+
+  if a:bang == "!"
+    return purescript#ide#call(
+      \ {"command": "reset"},
+      \ "failed to reset",
+      \ 0,
+      \ { resp -> resp["resultType"] == "success" ? PSCIDEload(a:logLevel, "", hasCb ? a:1 : v:null) : "" }
+      \ )
+  endif
 
   let input = {'command': 'load'}
 
-  let resp = s:callPscIde(input, "Failed to load", 0)
-
-  if type(resp) == type({}) && resp['resultType'] ==# "success"
-    call s:log("PSCIDEload: Succesfully loaded modules: " . string(resp["result"]), loglevel)
-  else
-    call s:log("PSCIDEload: Failed to load. Error: " . string(resp["result"]), loglevel)
-  endif
+  call purescript#ide#call(
+	\ input,
+	\ "Failed to load",
+	\ 0,
+	\ Fn
+	\ )
 endfunction
 
-function! s:ExtractModule()
-  " Find the module we're currently in. Don't know how to get the length of
-  " the current buffer so just looking at the first 20 lines, should be enough
-  let module = ''
-  let iteration = 0
-  while module == '' && iteration < 20
-    let iteration += 1
-    let line = getline(iteration)
-    let matches = matchlist(line, 'module\s\(\S*\)')
-    if len(matches) > 0
-      let module = matches[1]
-    endif
-  endwhile
-
-  return module
+function! s:PSCIDEloadCallback(logLevel, resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
+  endif
+  call purescript#ide#utils#log(tolower(a:resp["result"]))
+  return a:resp
 endfunction
 
 " Import given identifier
-command! PSCIDEimportIdentifier call PSCIDEimportIdentifier()
-function! PSCIDEimportIdentifier()
-  call s:importIdentifier(s:GetWordUnderCursor(), "")
+function! PSCIDEimportIdentifier(ident)
+  call purescript#ide#import#identifier(a:ident, "")
 endfunction
-function! s:importIdentifier(id, module)
-  let ident = a:id
 
-  call s:log('PSCIDEimportIdentifier', 3)
-  call s:log('ident: ' . ident, 3)
-  call s:log('s:tempfile: ' . s:tempfile, 3)
-
-  if (ident == "")
-    return
+fun! s:completeCommand(ident, qualifier)
+  let currentModule = purescript#ide#utils#currentModule()
+  let filters = []
+  if !empty(a:qualifier)
+    let modules = map(purescript#ide#import#listImports(currentModule, a:qualifier), { idx, val -> val["module"] })
+    let filters = [purescript#ide#utils#modulesFilter(modules)]
   endif
+  return
+	\ {'command': 'complete'
+	\ , 'params':
+	\   { 'matcher': empty(a:ident) ? {} : s:flexMatcher(a:ident)
+	\   , 'options': { 'groupReexports': v:true }
+	\   , 'filters': filters
+	\   }
+	\ }
+endfun
 
-  let oldlines = getline(1, '$')
+fun! PSCIDEcompleteIdentifier(argLead, cmdLead, cursorPos)
+  let res = s:completeFn(v:false, a:argLead, function("s:completeCommand"))
+  return join(uniq(sort(map(res, {idx, r -> r.word}))), "\n")
+endfun
 
-  call writefile(oldlines, s:tempfile)
-
-  let input = { 
-        \ 'command': 'import' ,
-        \ 'params': {
-        \   'file': s:tempfile, 
-        \   'importCommand': {
-        \     'importCommand': 'addImport',
-        \     'identifier': ident
-        \ } } }
-
-  if a:module != ""
-    let input.params.filters = [{'filter': 'modules', 'params': {'modules': [a:module]}}]
-  endif
-
-  let resp = s:callPscIde(input, "Failed to import identifier " . ident, 0)
-
-  "multiple possibilities
-  if type(resp) == type({}) && resp.resultType ==# "success" && type(resp.result[0]) == type({})
-    let choices = copy(resp.result)
-    call map (choices, 'v:key. v:val["module"]')
-    let choice = confirm("Multiple possibilities to import " . ident , join(choices, "\n"))
-    if choice
-      call s:importIdentifier(ident, resp.result[choice - 1].module)
+function! PSCIDEgoToDefinition(bang, ident)
+  let currentModule = purescript#ide#utils#currentModule()
+  let [ident, qualifier] = purescript#ide#utils#splitQualifier(a:ident)
+  let imports = purescript#ide#import#listImports(currentModule, qualifier, a:bang != "!" ? ident : "")
+  if a:bang == "!"
+    if empty(qualifier)
+      let filters = []
+    else
+      let modules = map(copy(imports), {key, val -> val["module"]})
+      let filters = [purescript#ide#utils#modulesFilter(modules)]
     endif
-    return
-  endif
-
-  if type(resp) == type({}) && resp['resultType'] ==# "success"
-    let newlines = resp.result
-
-    let linesdiff = len(newlines) - len(oldlines)
-    let nrOfOldlinesUnderLine = line(".") - 1
-    let nrOfNewlinesUnderLine = nrOfOldlinesUnderLine + linesdiff
-    let nrOfLinesToReplace = min([nrOfNewlinesUnderLine, nrOfOldlinesUnderLine])
-    let nrOfLinesToDelete = -min([0, linesdiff])
-    let nrOfLinesToAppend = max([0, linesdiff])
-
-    call s:log('linesdiff: ' . linesdiff, 3)
-    call s:log('nrOfOldlinesUnderLine: ' . nrOfOldlinesUnderLine, 3)
-    call s:log('nrOfNewlinesUnderLine: ' . nrOfNewlinesUnderLine, 3)
-    call s:log('nrOfLinesToReplace: ' . nrOfLinesToReplace, 3)
-    call s:log('nrOfLinesToDelete: ' . nrOfLinesToDelete, 3)
-    call s:log('nrOfLinesToAppend: ' . nrOfLinesToAppend, 3)
-
-    let oldCursorPos = getcurpos()
-
-    " Adding one at a time with setline + append/delete to keep line symbols and
-    " cursor as intact as possible
-    call setline(1, s:take(newlines, nrOfLinesToReplace))
-
-    if (nrOfLinesToDelete > 0)
-      let comm = 'silent ' . (nrOfLinesToReplace + 1) . "," . (nrOfLinesToReplace + nrOfLinesToDelete) . "d|0"
-      :exe comm
-      call cursor(oldCursorPos[1] - nrOfLinesToDelete, oldCursorPos[2])
-    endif
-    if (nrOfLinesToAppend > 0)
-      let linesToAppend = s:take(s:drop(newlines, nrOfLinesToReplace), nrOfLinesToAppend)
-      call s:log('linesToAppend: ' . string(linesToAppend), 3)
-      call append(nrOfOldlinesUnderLine, linesToAppend)
-    endif
-
-    call s:log("PSCIDEimportIdentifier: Succesfully imported identifier: " . a:module . " ".a:id, 3)
   else
-    call s:log("PSCIDEimportIdentifier: Failed to import identifier " . ident . ". Error: " . string(resp["result"]), 0)
+    let modules = map(copy(imports), {key, val -> val["module"]})
+    call add(modules, currentModule)
+    call add(modules, "Prim")
+    let filters = [purescript#ide#utils#modulesFilter(modules)]
   endif
+  call purescript#ide#call(
+	\ {'command': 'type', 'params': {'search': ident, 'filters': filters}, 'currentModule': currentModule},
+	\ 'Failed to get location info for: ' . a:ident,
+	\ 0,
+	\ { resp -> s:PSCIDEgoToDefinitionCallback(a:bang, a:ident, resp) }
+	\ )
 endfunction
 
-function! s:take(list, j)
-  let newlist = []
-  for i in range(0, a:j - 1)
-    call add(newlist, a:list[i])
-  endfor
-  return newlist
-endfunction
-
-function! s:drop(list, j)
-  let newlist = []
-  for i in range(0, len(a:list) - 1)
-    if i >= a:j
-      call add(newlist, a:list[i])
+function! s:PSCIDEgoToDefinitionCallback(bang, ident, resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
+  endif
+  let results = []
+  for res in a:resp.result
+    if empty(filter(copy(results), { idx, val -> 
+	  \    type(val.definedAt) == v:t_dict
+	  \ && type(res.definedAt) != v:t_dict
+	  \ && val.definedAt.name == res.definedAt.name
+	  \ && val.definedAt.start[0] == res.definedAt.start[0]
+	  \ && val.definedAt.start[1] == res.definedAt.start[1]}))
+      call add(results, res)
     endif
   endfor
-  return newlist
-endfunction
-
-command! PSCIDEgoToDefinition call PSCIDEgoToDefinition()
-function! PSCIDEgoToDefinition()
-  let identifier = s:GetWordUnderCursor()
-  call s:log('PSCIDEgoToDefinition identifier: ' . identifier, 3)
-
-  let currentModule = s:ExtractModule()
-  call s:log('PSCIDEgoToDefinition currentModule: ' . currentModule, 3)
-
-  let resp = s:callPscIde({'command': 'type', 'params': {'search': identifier, 'filters': []}, 'currentModule': currentModule}, 'Failed to get location info for: ' . identifier, 0)
-
-  if type(resp) == type({}) && resp.resultType ==# "success" && len(resp.result) == 1
-      call s:goToDefinition(resp.result[0].definedAt)
+  if a:bang != "!" && empty(results)
+    " try again without a bang
+    return PSCIDEgoToDefinition("!", a:ident)
   endif
-
-  if type(resp) == type({}) && resp.resultType ==# "success" && len(resp.result) > 1
-    let choices = copy(resp.result)
-    call map (choices, 'v:key. v:val["module"]')
-    let choice = confirm("Multiple possibilities for " . identifier , join(choices, "\n"))
-    if choice
-      call s:goToDefinition(resp.result[choice - 1].definedAt)
-    endif
-    return
+  if len(results) > 1
+    let choice = purescript#ide#utils#pickOption("Multiple possibilities for " . a:ident, results, "module")
+  elseif len(results) == 1
+    let choice = {"picked": v:true, "option": results[0]}
+  else
+    let choice = {"picked": v:false, "option": v:null}
+  endif
+  if choice.picked && type(choice.option.definedAt) == type({})
+    call s:goToDefinition(choice.option.definedAt)
+  elseif type(choice.option) == v:t_dict
+    call purescript#ide#utils#warn("no location information found for: " . a:ident . " in module " . choice.option.module)
+  else
+    call purescript#ide#utils#warn("no location information found for: " . a:ident)
   endif
 endfunction
 
 function! s:goToDefinition(definedAt)
   let currentfile = expand("%:p")
-  if (currentfile == a:definedAt.name)
-    let cur = getpos(".")
-    let cur[1] = a:definedAt.start[0]
-    call setpos(".", cur)
+  let fname = a:definedAt.name
+  let cwd = purescript#ide#utils#findRoot()
+  let fname = fnameescape(findfile(fname, cwd))
+  if (currentfile == fname)
+    " set ' mark at the current position
+    m'
+    call cursor(a:definedAt.start[0], a:definedAt.start[1])
   else
-    let cwd = getcwd()
-    call s:log("PSCIDE s:goToDefinition: cwd: " . cwd, 3)
+    call purescript#ide#utils#debug("PSCIDE s:goToDefinition: fname: " . fname, 3)
 
-    let lcwd = len(cwd)
-    let name = strpart(a:definedAt.name, lcwd + 1) " To strip slash
-    call s:log("PSCIDE s:goToDefinition: name: " . name, 3)
-
-    let command = "e +" . a:definedAt.start[0] . " " . name
-    call s:log("PSCIDE s:goToDefinition: command: " . command, 3)
-
-    :exe command
+    let command = "e +" . a:definedAt.start[0] . " " . fname
+    call purescript#ide#utils#debug("PSCIDE s:goToDefinition: command: " . command, 3)
+    exe command
+    exe "normal " . a:definedAt.start[1] . "|"
   endif
 endfunction
 
-function! PSCIDErebuild(stuff)
-  let g:psc_ide_suggestions = {}
+function! PSCIDErebuild(async, bang, ...)
+
   let filename = expand("%:p")
   let input = {'command': 'rebuild', 'params': {'file': filename}}
 
-  let resp = s:callPscIde(input, 0, 0)
+  if a:0 >= 1 && type(a:1) == v:t_func
+    let CallBack = a:1
+  else
+    let CallBack = {resp -> resp}
+  endif
 
-  if type(resp) == type({}) && has_key(resp, "resultType") 
-     \ && has_key (resp, "result") && type(resp.result) == type([])
-    if resp.resultType == "error"
-      let out = ParsePscJsonOutput(resp.result, [])
+  if a:0 >= 2
+    let silent = a:2
+  else
+    let silent = v:false
+  endif
+
+  if a:async
+    if a:bang == "!"
+      call PSCIDEload(0, "!", { resp -> PSCIDErebuild(a:async, "", CallBack )})
     else
-      let out = ParsePscJsonOutput([], resp.result)
+      call purescript#ide#call(
+	    \ input,
+	    \ "failed to rebuild",
+	    \ 0,
+	    \ { msg -> CallBack(s:PSCIDErebuildCallback(filename, msg, silent)) }
+	    \ )
     endif
-    if out.error != ""
-      call s:log("PSCIDErebuild: Failed to interpret " . string(resp.result), 0)
-    endif
+  else
+    let resp = s:PSCIDErebuildCallback(
+	      \ filename,
+	      \ purescript#ide#callSync(input, 0, 0),
+	      \ silent
+	      \ )
+    return CallBack(resp)
+  endif
+endfunction
+
+function! s:PSCIDErebuildCallback(filename, resp, silent) 
+  let g:psc_ide_suggestions = {}
+  if type(a:resp) == v:t_dict && has_key(a:resp, "resultType") 
+     \ && has_key (a:resp, "result") && type(a:resp.result) == v:t_list
+    let out = s:qfList(a:filename, a:resp.result, a:resp.resultType)
 
     let g:psc_ide_suggestions = out.suggestions
-    return out.llist
+    return out.qfList
   else
-    call s:log("PSCIDErebuild: Failed to rebuild " . filename, 0)
+    if !a:silent
+      call purescript#ide#utils#error("failed to rebuild")
+    endif
     return []
   endif
 endfunction
 
 " Add type annotation
-command! PSCIDEaddTypeAnnotation call PSCIDEaddTypeAnnotation()
-function! PSCIDEaddTypeAnnotation()
-  let identifier = s:GetWordUnderCursor()
+function! PSCIDEaddTypeAnnotation(ident)
+  call s:getType(
+	\ a:ident,
+	\ v:true,
+	\ { resp -> s:PSCIDEaddTypeAnnotationCallback(a:ident, resp) }
+	\ )
+endfunction
 
-  let result = s:getType(identifier)
-
-  if type(result) == type([])
+function! s:PSCIDEaddTypeAnnotationCallback(ident, resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
+  endif
+  if !empty(a:resp["result"])
+    let result = a:resp["result"]
     let lnr = line(".")
-    call append(lnr - 1, s:StripNewlines(result[0]['identifier']) . ' :: ' . s:StripNewlines(result[0]["type"]))
+    let indent = matchstr(getline(lnr), '^\s*\ze')
+    call append(lnr - 1, indent . s:StripNewlines(result[0]['identifier']) . ' :: ' . s:StripNewlines(result[0]["type"]))
   else
-    echom "PSC-IDE: No type information found for " . identifier
+    call purescript#ide#utils#warn("no type information found for " .a:ident)
   endif
 endfunction
 
 " CWD ------------------------------------------------------------------------
-" Get current working directory of psc-ide-server
-command! PSCIDEcwd call PSCIDEcwd()
+" Get current working directory of `pure ide server`
 function! PSCIDEcwd()
-  let resp = s:callPscIde({'command': 'cwd'}, "Failed to get current working directory", 0)
+  call purescript#ide#call(
+	\ {'command': 'cwd'},
+	\ "Failed to get current working directory", 
+	\ 0,
+	\ function("s:PSCIDEcwdCallback")
+	\ )
+endfunction
 
-  if type(resp) == type({}) && resp['resultType'] ==# 'success'
-    echom "PSC-IDE: Current working directory: " . resp["result"]
+function! s:PSCIDEcwdCallback(resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
   endif
+  call purescript#ide#utils#log("current working directory: " . a:resp.result)
 endfunction
 
 " ADDCLAUSE
 " Makes template function implementation from signature
-command! PSCIDEaddClause call PSCIDEaddClause()
-function! PSCIDEaddClause()
+function! PSCIDEaddClause(bang)
   let lnr = line(".")
   let line = getline(lnr)
 
-  let command = {'command': 'addClause', 'params': {'line': line, 'annotations': s:jsonFalse()}}
+  let command = {
+	\ 'command': 'addClause',
+	\ 'params':
+	\   { 'line': line
+	\   , 'annotations': a:bang == "!" ? v:true : v:false
+	\   }
+	\ }
 
-  let resp = s:callPscIde(command, "Failed to add clause", 0)
+  call purescript#ide#call(
+	\ command,
+	\ "Failed to add clause",
+	\ 0,
+	\ { resp -> s:PSCIDEaddClauseCallback(lnr, resp) }
+	\ )
+endfunction
 
-  if type(resp) == type({}) && resp['resultType'] ==# 'success' && type(resp.result) == type([])     
-    call s:log('PSCIDEaddClause results: ' . string(resp.result), 3)
-    call append(lnr, resp.result)
-    :normal dd
+function! s:PSCIDEaddClauseCallback(lnr, resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
   endif
+
+  call purescript#ide#utils#debug('PSCIDEaddClause results: ' . string(a:resp.result), 3)
+  call append(a:lnr, a:resp.result)
+  normal dd
 endfunction
 
 " CASESPLIT
 " Hover cursor over variable in function declaration -> pattern match on all
 " different cases of the variable
-command! PSCIDEcaseSplit call PSCIDEcaseSplit()
-function! PSCIDEcaseSplit()
-  let lnr = line(".")
-  let line = getline(lnr)
-
-  let word = s:GetWordUnderCursor()
-  let b = match(line, word)
-  let e = matchend(line, word)
-
-  let t = input("Type: ")
-
-  call s:log('PSCIDEcaseSplit: ', 3)
-  call s:log('line: ' . line, 3)
-  call s:log('start position: ' . string(b), 3)
-  call s:log('end position: ' . string(e), 3)
-  call s:log('type: ' . t, 3)
-
-  let command = {'command': 'caseSplit', 'params': {'line': line, 'begin': b, 'end': e, 'annotations': s:jsonFalse(), 'type': t}}
-
-  let resp = s:callPscIde(command, 'Failed to split case for: ' . word, 0)
-
-  if type(resp) == type({}) && resp['resultType'] ==# 'success' && type(resp.result) == type([])     
-    call s:log('PSCIDEcaseSplit results: ' . string(resp.result), 3)
-    call append(lnr, resp.result)
-    :normal dd
+function! PSCIDEcaseSplit(bang, ...)
+  if (a:0 >= 1)
+    let type = a:1
+  else
+    let type = input("Please provide a type: ")
   endif
+
+  let winview = winsaveview()
+  let lnr = line(".")
+  let begin = s:findStart()
+  let line = getline(lnr)
+  let len = len(matchstr(line[begin:], '^\k*'))
+  let word = line[:len]
+
+  call winrestview(winview)
+
+  let command = {
+	\ 'command': 'caseSplit',
+	\ 'params':
+	\   { 'line': line
+	\   , 'begin': begin
+	\   , 'end': begin + len
+	\   , 'annotations': a:bang == "!" ? v:true : v:false
+	\   , 'type': type
+	\   }
+	\ }
+
+  call purescript#ide#call(
+	\ command,
+	\ 'Failed to split case for: ' . word,
+	\ 0,
+	\ { resp -> s:PSCIDEcaseSplitCallback(lnr, type, resp) }
+	\ )
+endfunction
+
+function! s:PSCIDEcaseSplitCallback(lnr, type, resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    if get(a:resp, "result", "") == "Not Found"
+      call purescript#ide#utils#error("type `" . a:type . "` not found", v:true)
+    else
+      call purescript#ide#handlePursError(a:resp)
+    endif
+    return
+  endif
+  call append(a:lnr, a:resp.result)
+  normal dd
+  normal $
 endfunction
 
 " TYPE -----------------------------------------------------------------------
 " Get type of word under cursor
-command! PSCIDEtype call PSCIDEtype()
-function! PSCIDEtype()
-  let identifier = s:GetWordUnderCursor()
+function! PSCIDEtype(ident, filterModules)
+  call s:getType(
+	\ a:ident,
+	\ a:filterModules,
+	\ { resp -> s:PSCIDEtypeCallback(a:ident, resp.result, a:filterModules) }
+	\ )
+endfunction
 
-  let result = s:getType(identifier)
-
-  if type(result) == type([])
-    for e in result
-      echom s:formattype(e)
-    endfor
+function! s:PSCIDEtypeCallback(ident, result, filterModules)
+  if type(a:result) == v:t_list && !empty(a:result)
+      let filePadding = min([max(map(copy(a:result), { i, r -> type(r.definedAt) == v:t_dict && has_key(r.definedAt, "name") ? len(r.definedAt.name) : 0})) + 1, 30])
+      let modulePadding = min([max(map(copy(a:result), { i, r -> type(r.module) == v:t_string ? len(r.module) : 0})) + 1, 30])
+      call setloclist(0, map(a:result, { idx, r -> s:formattype(r, filePadding, modulePadding)}))
+      call setloclist(0, [], 'a', {'title': 'PureScript Types'})
+      lopen
+      wincmd p
+  elseif a:filterModules
+    call PSCIDEtype(a:ident, v:false)
   else
-    echom "PSC-IDE: No type information found for " . identifier
+    call purescript#ide#utils#log("no type information found for " . a:ident)
   endif
 endfunction
 
-function! s:getType(identifier)
-  let currentModule = s:ExtractModule()
-  call s:log('PSCIDE s:getType currentModule: ' . currentModule, 3)
-
-  let resp = s:callPscIde({'command': 'type', 'params': {'search': a:identifier, 'filters': []}, 'currentModule': currentModule}, 'Failed to get type info for: ' . a:identifier, 0)
-
-  if type(resp) == type({}) && resp['resultType'] ==# 'success'
-    if len(resp["result"]) > 0
-      return resp["result"]
-    endif
+" LISTIMPORTS -----------------------------------------------------------------------
+" List the modules imported by the current module
+function! PSCIDElistImports()
+  let currentModule = purescript#ide#utils#currentModule()
+  call purescript#ide#utils#debug('PSCIDElistImports ' . currentModule, 3)
+  let imports =  purescript#ide#import#listImports(currentModule)
+  for import in imports
+    call s:echoImport(import)
+  endfor
+  if (len(imports) == 0)
+    echom "PSC-IDE: No import information found for " . currentModule
   endif
 endfunction
 
-function! s:formattype(record)
-  return s:CleanEnd(s:StripNewlines(a:record['module']) . '.' . s:StripNewlines(a:record['identifier']) . ' :: ' . s:StripNewlines(a:record['type']))
+function! s:echoImport(import)
+  echohl Identifier
+  echon a:import["module"]
+  echohl Normal
+  if has_key(a:import, "identifiers")
+    echon " ("
+    let len = len(a:import["identifiers"])
+    let idx = 0
+    for ident in a:import["identifiers"]
+      echohl Identifier
+      echon ident 
+      echohl Normal
+      if (idx < len - 1)
+	echon ", "
+      else
+	echon ")"
+      endif
+      let idx += 1
+    endfor
+  endif
+  if has_key(a:import, "qualifier")
+    echohl Keyword
+    echon " as "
+    echohl Identifier
+    echon a:import["qualifier"]
+    echohl Normal
+  endif
+  echon "\n"
+endfunction
+
+function! s:getType(ident, filterModules, cb)
+  let currentModule = purescript#ide#utils#currentModule()
+  let [ident, qualifier] = purescript#ide#utils#splitQualifier(a:ident)
+  let imports = purescript#ide#import#listImports(currentModule, qualifier, a:filterModules ? ident : "")
+  let modules = map(copy(imports), {key, val -> val["module"]})
+  let filters = [purescript#ide#utils#modulesFilter(modules)]
+  call purescript#ide#utils#debug('PSCIDE s:getType currentModule: ' . currentModule, 3)
+
+  call purescript#ide#call(
+	\ { 'command': 'type'
+	\ , 'params':
+	\     { 'search': ident
+	\     , 'filters': filters
+	\     , 'currentModule': currentModule
+	\     }
+	\ },
+	\  'Failed to get type info for: ' . a:ident,
+	\ 0,
+	\ {resp -> a:cb(resp)}
+	\ )
+endfunction
+
+function! s:formattype(record, filePadding, modulePadding)
+  let definedAt = a:record.definedAt
+  if type(definedAt) != v:t_dict
+    " v:null's are ignored by vim's setqflist()
+    let definedAt = {"name": "", "start": [v:null, v:null]}
+  endif
+  let entry =
+	\ { "filename": s:vim_module_names ? printf("%-" . a:filePadding . "s", definedAt["name"]) : ""
+	\ , "module": empty(a:record["module"]) ? "" : printf("%-" . a:modulePadding . "s", a:record["module"])
+	\ , "lnum": definedAt["start"][0]
+	\ , "col": definedAt["start"][1]
+	\ , "text": s:CleanEnd(s:StripNewlines(a:record['identifier']) . ' ∷ ' . s:StripNewlines(a:record['type']))
+	\ }
+  return entry
 endfunction
 
 " APPLYSUGGESTION ------------------------------------------------------
 " Apply suggestion in loclist to buffer --------------------------------
-command! PSCIDEapplySuggestion call PSCIDEapplySuggestion()
-function! PSCIDEapplySuggestion()
-  let lnr = line(".")
-  let filename = expand("%:p")
-  call PSCIDEapplySuggestionPrime(lnr, filename, 0)
+function! PSCIDEapplySuggestion(bang)
+  if empty(a:bang)
+    call PSCIDEapplySuggestionPrime(expand("%:p") . "|" . line("."), v:true, 0)
+  else
+    let l = 0
+    let len = len(keys(g:psc_ide_suggestions))
+    while l < len
+      " PSCIDEapplySuggestionPrime will change g:psc_ide_suggestions keys on
+      " the fly
+      let keys = keys(g:psc_ide_suggestions)
+      if len(keys) > 0
+	let key = keys[0]
+	call PSCIDEapplySuggestionPrime(key, v:true, 0)
+      else
+	break
+      endif
+    endwhile
+  endif
 endfunction
-function! PSCIDEapplySuggestionPrime(lnr, filename, silent)
-  "let llist = getloclist(0)
 
-  call s:log('PSCIDEapplySuggestion: lineNr: ' . a:lnr, 3)
-  call s:log('PSCIDEapplySuggestion: filename: ' . a:filename, 3)
+function! PSCIDEapplySuggestionPrime(key, cursor, silent)
 
-  let key = a:filename . "|" . string(a:lnr)
-  if (has_key(g:psc_ide_suggestions, key))
-    let found = g:psc_ide_suggestions[key]
+  call purescript#ide#utils#debug('PSCIDEapplySuggestion: a:key: ' . a:key, 3)
+
+  if (has_key(g:psc_ide_suggestions, a:key))
+    let sugg = g:psc_ide_suggestions[a:key]
   else
     if !a:silent
-      call s:log('PSCIDEapplySuggestion: No suggestion found', 0)
+      call purescript#ide#utils#debug('PSCIDEapplySuggestion: No suggestion found', 0)
     endif
     return
   endif
 
-  call s:log('PSCIDEapplySuggestion: Suggestion found: ' . string(found), 3)
+  call purescript#ide#utils#debug('PSCIDEapplySuggestion: Suggestion found: ' . string(sugg), 3)
+  let replacement = sugg.replacement
+  let range = sugg.replaceRange
+  let startLine = range.startLine
+  let startColumn = range.startColumn
+  let endLine = range.endLine
+  let endColumn = range.endColumn
+  if startLine == endLine
+    let line = getline(startLine)
+    " remove trailing news lines
+    let replacement = substitute(replacement, '\_s*$', '\n', '')
+    " add identation to each line (except first one)
+    " and remove trailing white space from each line
+    let RSpace = { line -> substitute(line, '\s*$', '', '') }
+    let replacement = join(
+	  \ map(
+	    \ split(replacement, "\n"),
+	    \ { idx, line -> idx == 0 ? RSpace(line) : repeat(" ", startColumn) . RSpace(line)}
+	  \ ),
+	  \ "\n")
+    let cursor = getcurpos()
+    if startColumn == 1
+      let newLines = split(replacement . line[endColumn - 1:], "\n")
+    else
+      let newLines = split(line[0:startColumn - 2] . replacement . line[endColumn - 1:], "\n")
+    endif
+    exe startLine . "d _"
+    call append(startLine - 1, newLines)
+    if a:cursor
+      call cursor(cursor[1], startColumn - 1)
+    endif
+    call remove(g:psc_ide_suggestions, a:key)
+    let g:psc_ide_suggestions = s:updateSuggestions(startLine, len(newLines) - 1)
 
-  while found.endColumn == 1 || getline(found.endLine) == ''
-    call s:log('PSCIDEapplySuggestion: endLine moved from ' . found.endLine . " to " . (found.endLine - 1) , 3)
-    let found.endLine = found.endLine - 1
-    let found.endColumn = len(getline(found.endLine)) + 1
-  endwhile
-
-  let lines = getline(found.startLine, found.endLine)
-  call s:log('PSCIDEapplySuggestion: Lines to replace: ' . string(lines), 3)
-
-  let newl = strpart(lines[0], 0, found.startColumn - 1) .
-           \ found.replacement .
-           \ strpart(lines[len(lines) - 1], found.endColumn - 1)
-  call s:log('PSCIDEapplySuggestion: newl: ' . newl, 3)
-
-  let newlines = split(newl, '\n')
-  call s:log('PSCIDEapplySuggestion: newlines: ' . string(newlines), 3)
-
-  if len(newlines) == 1
-    call s:log('PSCIDEapplySuggestion: setline(' . found.startLine . ", " . newlines[0] .")", 3)
-    call setline(found.startLine, newlines[0])
+    " trigger PSCIDErebuild
+    call purescript#ide#utils#update()
+    call PSCIDErebuild(v:true, "", function("PSCIDEerrors"))
   else
-    let command = string(found.startLine) . "," . string(found.endLine) . "d"
-    call s:log('PSCIDEapplySuggestion: exe ' . command , 3)
-    :exe command
-    call s:log('PSCIDEapplySuggestion: append(' . (found.startLine - 1) . ", " . string(newlines) . ")", 3)
-    call append(found.startLine - 1, newlines)
+    call purescript#ide#utils#debug("multiline suggestions are not supported in vim - please grab g:psc_ide_suggestions and open an issue")
   endif
 endfunction
 
-" Remove all import qualifications
-command! PSCIDEremoveImportQualifications call PSCIDEremoveImportQualifications()
-function! PSCIDEremoveImportQualifications()
-  let captureregex = "import\\s\\(\\S\\+\\)\\s*(.*)"
-  let replace = "import \\1"
-  let command = "silent %s:" . captureregex . ":" . replace . ":g|norm!``"
-  call s:log('Executing PSCIDEremoveImportQualifications command: ' . command, 3)
-  :exe command
-endfunction
+fun! s:updateSuggestions(startLine, newLines)
+  let suggestions = {}
+  for key in keys(g:psc_ide_suggestions)
+    let sug = g:psc_ide_suggestions[key]
+    if sug.replaceRange.startLine < a:startLine
+      let suggestions[key] = sug
+    else
+      let keyParts = split(key, "|")
+      let keyParts[len(keyParts) - 1] = sug.replaceRange.startLine + a:newLines
+      let newKey = join(keyParts, "|")
+      let sug.replaceRange.startLine = sug.replaceRange.startLine + a:newLines
+      let sug.replaceRange.endLine = sug.replaceRange.endLine + a:newLines
+      let suggestions[newKey] = sug
+    endif
+  endfor
+  return suggestions
+endfun
 
 " Add all import qualifications
-command! PSCIDEaddImportQualifications call PSCIDEaddImportQualifications()
 function! PSCIDEaddImportQualifications()
   let foundLines = []
   let filename = expand("%:p")
@@ -568,7 +852,7 @@ function! PSCIDEaddImportQualifications()
     call cursor(found[0], 0)
     let found = searchpos("import", "W")
   endwhile
-  call s:log('Adding import qualifications to : ' . string(foundLines), 3)
+  call purescript#ide#utils#debug('Adding import qualifications to : ' . string(foundLines), 3)
 
   for lnr in foundLines
     call PSCIDEapplySuggestionPrime(lnr, filename, 1)
@@ -579,144 +863,276 @@ endfunction
 
 
 " PURSUIT --------------------------------------------------------------------
-command! PSCIDEpursuit call PSCIDEpursuit()
-function! PSCIDEpursuit()
-  let identifier = s:GetWordUnderCursor()
+function! PSCIDEpursuit(ident)
 
-  let resp = s:callPscIde({'command': 'pursuit', 'params': {'query': identifier, 'type': "completion"}}, 'Failed to get pursuit info for: ' . identifier, 0)
+  call purescript#ide#call(
+	\ {'command': 'pursuit', 'params': {'query': a:ident, 'type': "completion"}},
+	\ 'Failed to get pursuit info for: ' . a:ident,
+	\ 0,
+	\ { resp -> s:PSCIDEpursuitCallback(resp) }
+	\ )
+endfunction
 
-  if type(resp) == type({}) && resp['resultType'] ==# 'success'
-    if len(resp["result"]) > 0
-      for e in resp["result"]
-        echom s:formatpursuit(e)
-      endfor
-    else
-      echom "PSC-IDE: No results found on Pursuit"
-    endif
+function! s:PSCIDEpursuitCallback(resp)
+  if type(a:resp) != v:t_dict || get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#handlePursError(a:resp)
   endif
-endfunction
-function! s:formatpursuit(record)
-  return "In " . s:CleanEnd(s:StripNewlines(a:record["package"])) . " " . s:CleanEnd(s:StripNewlines(a:record['module']) . '.' . s:StripNewlines(a:record['ident']) . ' :: ' . s:StripNewlines(a:record['type']))
+  call setloclist(0, map(a:resp.result, { idx, r -> { "text": s:formatpursuit(r) }}))
+  call setloclist(0, [], 'a', {'title': 'Pursuit'})
+  lopen
+  wincmd p
 endfunction
 
-" VALIDATE -----------------------------------------------------------------------
-command! PSCIDEprojectValidate call PSCIDEprojectValidate()
-function! PSCIDEprojectValidate()
+function! s:formatpursuit(record)
+  let package = s:CleanEnd(s:StripNewlines(get(a:record, "package", "")))
+  let module = s:CleanEnd(s:StripNewlines(get(a:record, "module", "")))
+  let ident = s:CleanEnd(s:StripNewlines(get(a:record, "ident", "")))
+  let type = get(a:record, "type", "")
+  if empty(type)
+    let type = ""
+  else
+    let type = "∷ " . s:CleanEnd(s:StripNewlines(type))
+  endif
+  return printf("%-20s %s.%s %s", package, module, ident, type)
+endfunction
+
+" VALIDATE -------------------------------------------------------------------
+function! PSCIDEprojectValidate(silent)
   let problems = s:projectProblems()
 
   if len(problems) == 0
-    let s:projectvalid = 1
-    echom "Your project is setup correctly."
+    call purescript#ide#setValid(v:true)
+    if !a:silent
+      call purescript#ide#utils#log("your project is setup correctly")
+    endif
   else
-    let s:projectvalid = 0
-    echom "Your project is not setup correctly. " . join(problems)
+    call purescript#ide#setValid(v:true)
+    call purescript#ide#utils#warn("your project is not setup correctly. " . join(problems))
   endif
 endfunction
 
 " LIST -----------------------------------------------------------------------
-command! PSCIDElist call PSCIDElist()
 function! PSCIDElist()
-  let resp = s:callPscIde({'command': 'list', 'params': {'type': 'loadedModules'}}, 'Failed to get loaded modules', 0)
+  let resp = purescript#ide#callSync(
+	\ {'command': 'list', 'params': {'type': 'loadedModules'}},
+	\ 'Failed to get loaded modules',
+	\ 0
+	\ )
+  call s:PSCIDElistCallback(resp)
+endfunction
 
-  if type(resp) == type({}) && resp['resultType'] ==# 'success'
-    if len(resp["result"]) > 0
-      for m in resp["result"]
+function! s:PSCIDElistCallback(resp)
+  if type(a:resp) == v:t_dict && a:resp['resultType'] ==# 'success'
+    if len(a:resp["result"]) > 0
+      for m in a:resp["result"]
         echom m
       endfor
-    else
-      echom "PSC-IDE: No loaded modules found"
     endif
+  elseif type(a:resp) == v:t_dict
+    call purescript#ide#utils#error(get(a:resp, "result", "error"))
   endif
 endfunction
 
+fun! s:findStart()
+  let col   = col(".")
+  let line  = getline(".")
 
-" SET UP OMNICOMPLETION ------------------------------------------------------
-set omnifunc=PSCIDEomni
-
-" OMNICOMPLETION FUNCTION ----------------------------------------------------
-"Omnicompletion function
-function! PSCIDEomni(findstart,base)
-  if a:findstart 
-    let col   = col(".")
-    let line  = getline(".")
-
-    " search backwards for start of identifier (iskeyword pattern)
-    let start = col
-    while start>0 && (line[start-2] =~ "\\k" || line[start-2] =~ "\\.")
-      let start -= 1
-    endwhile
-
-    "Looking for the start of the identifier that we want to complete
-    return start-1
-  else
-    let str = type(a:base) == type('a') ? a:base : string(a:base)
-    call s:log('PSCIDEOmni: Looking for completions for: ' . str, 3)
-
-    let currentModule = s:ExtractModule()
-    call s:log('PSCIDEOmni currentModule: ' . currentModule, 3)
-
-    let resp = s:callPscIde({'command': 'complete', 'params': {'filters': [s:prefixFilter(str)], 'matcher': s:flexMatcher(str), 'currentModule': currentModule}}, 'Failed to get completions for: '. str, 0)
-
-    if type(resp) == type({}) && resp.resultType ==# 'success'
-      call s:log('PSCIDEOmni: Found Entries: ' . string(resp.result), 3)
-      let entries = resp["result"] "Entries = list of {module, identifier, type}
-    else 
-      let entries = []
-    endif
-
-    "Popuplating the omnicompletion list
-    let result = []
-    if type(entries)==type([])
-      for entry in entries
-        if entry['identifier'] =~ '^' . str
-          let e = {'word': entry['identifier'], 'menu': s:StripNewlines(entry['type']), 'info': entry['module'], 'dup': 0}
-          let existing = s:findInListBy(result, 'word', e['word'])
-
-          if existing != {}
-            let e['menu'] = e['menu'] . ' (' . e['info'] . ')'
-            let e['dup'] = 1
-            if existing['dup'] == 0
-              let existing['menu'] = existing['menu'] . ' (' . existing['info'] . ')'
-              let existing['dup'] = 1
-            endif
-          endif
-
-          call add(result, e)
-        endif
-      endfor
-    endif
-    return result
-  endif
-endfunction
-
-function! s:findInListBy(list, key, str)
-  let i = 0
-  let l = len(a:list)
-  let found = {}
-  
-  while found == {} && i < l
-    if a:list[i][a:key] == a:str
-      let found = a:list[i]
-    endif
-    let i = i + 1
+  " search backwards for start of identifier (iskeyword pattern)
+  let start = col
+  while start > 0 && (line[start - 2] =~ '\(\k\|[<>$#+*/%''&=!:~?^-]\)' || line[start - 2] =~ '\.')
+    let start -= 1
   endwhile
 
-  return found
-endfunction
+  "Looking for the start of the identifier that we want to complete
+  return start - 1
+endfun
+
+" COMPLETION FUNCTION --------------------------------------------------------
+fun! s:completeFn(findstart, base, commandFn)
+  if a:findstart 
+    return s:findStart()
+  else
+
+    let [ident, qualifier] = purescript#ide#utils#splitQualifier(a:base)
+
+    let command = a:commandFn(ident, qualifier)
+    if empty(command)
+      return
+    endif
+
+    let resp = purescript#ide#callSync(
+	  \ command,
+	  \ 'Failed to get completions for: '. a:base,
+	  \ 0)
+
+    let entries = get(resp, "result", [])
+    "Popuplating the omnicompletion list
+    let result = []
+
+    let hasPreview = index(split(&l:completeopt, ','), 'preview') != -1
+    " vimL does not have compare function for strings, and uniq must run after
+    " sort.
+    if g:psc_ide_omnicompletion_sort_by != "flex"
+      call uniq(
+	    \ sort(entries, { e1, e2 -> 
+		  \ g:psc_ide_omnicompletion_sort_by == "module" 
+		    \ ? e1.module == e2.module
+		    \ : sort([e1.identifier, e2.identifier]) == [e2.identifier, e1.identifier]}),
+	    \ { e1, e2 -> !s:compareByDefinedAt(e1, e2) }
+	    \ )
+    endif
+
+    for entry in entries
+      let detail = printf("\t%-25S\t\t%s", entry['module'], entry["type"])
+      let e = { 'word': (empty(qualifier) ? "" : qualifier . ".") . entry['identifier']
+	    \ , 'menu': hasPreview ? entry["type"] : detail
+	    \ , 'info': detail
+	    \ , 'dup': 1
+	    \ }
+      call add(result, e)
+    endfor
+    return result
+  endif
+endfun
+
+fun! s:omniCommand(ident, qualifier)
+  let currentModule = purescript#ide#utils#currentModule()
+
+  let filters = []
+  if g:psc_ide_omnicompletion_prefix_filter
+    call add(filters, s:prefixFilter(a:ident))
+  endif
+
+  if !empty(a:qualifier)
+    let imports = map(purescript#ide#import#listImports(currentModule, a:qualifier), { idx, val -> val["module"] })
+
+    if len(imports)
+      call add(filters, purescript#ide#utils#modulesFilter(imports))
+    else
+      " none of imported modules is qualified with a:qualifier
+    endif
+    let matcher = s:flexMatcher(a:ident)
+  else
+    if g:psc_ide_omnicompletion_filter_modules
+      let imports = map(purescript#ide#import#listImports(currentModule), { n, m -> m.module })
+      call extend(imports, [currentModule, "Prim"])
+      call add(filters, purescript#ide#utils#modulesFilter(modules))
+    endif
+    let matcher = s:flexMatcher(a:ident)
+  endif
+
+  if empty(a:ident)
+    let matcher = {}
+  endif
+
+  return {'command': 'complete'
+	 \ , 'params':
+	 \   { 'filters': filters
+	 \   , 'matcher': matcher
+	 \   , 'currentModule': currentModule
+	 \   , 'options': { 'groupReexports': v:true }
+	 \   }
+	 \ }
+endfun
+
+fun! s:compareByDefinedAt(e1, e2)
+  let d1 = get(a:e1, "definedAt", v:null)
+  let d2 = get(a:e2, "definedAt", v:null)
+  if type(d1) != v:t_dict || type(d2) != v:t_dict
+    return v:false
+  endif
+  if d1["name"] != d2["name"]
+	\ || d1["start"][0] != d2["start"][0]
+	\ || d1["start"][1] != d2["start"][1]
+	\ || d1["end"][0] != d2["end"][0]
+	\ || d1["end"][1] != d2["end"][1]
+    return v:false
+  else
+    return v:true
+  endif
+endfun
 
 function! s:prefixFilter(s) 
-  return {"filter": "prefix", "params": { "search": a:s } }
+  return { "filter": "prefix", "params": { "search": a:s } }
 endfunction
 
 function! s:flexMatcher(s)
-  return {"matcher": "flex", "params": {"search": a:s} }
+  return { "matcher": "flex", "params": { "search": a:s } }
 endfunction
+
+" SET UP OMNICOMPLETION ------------------------------------------------------
+fun! PSCIDEomni(findstart, base)
+  if a:findstart
+    return s:completeFn(a:findstart, a:base, function("s:omniCommand"))
+  else
+    let results = s:completeFn(a:findstart, a:base, function("s:omniCommand"))
+    if empty(results)
+      let results = PSCIDEcomplete(a:findstart, a:base)
+    endif
+    return results
+  endif
+endfun
+
+" SET UP USERCOMPLETION ------------------------------------------------------
+fun! PSCIDEcomplete(findstart, base)
+  return s:completeFn(a:findstart, a:base, function("s:completeCommand"))
+endfun
+
+" SEARCH ---------------------------------------------------------------------
+fun! PSCIDEsearch(ident)
+  let matcher = s:flexMatcher(a:ident)
+  call purescript#ide#call(
+	\ {'command': 'complete'
+	\ , 'params':
+	\   { 'matcher': matcher
+	\   , 'options': { 'groupReexports': v:true }
+	\   }
+	\ },
+	\ 'Failed to get completions for: '. a:ident,
+	\ 0,
+	\ { resp -> s:searchFn(resp) }
+	\ )
+endfun
+
+fun! s:searchFn(resp)
+  if get(a:resp, "resultType", "error") !=# "success"
+    return purescript#ide#utils#error(get(a:resp, "result", "error"))
+  endif
+  let llist = []
+  let result = get(a:resp, "result", [])
+  let filePadding = min([max(map(copy(result), { i, r -> type(r.definedAt) == v:t_dict && has_key(r.definedAt, "name") ? len(r.definedAt.name) : 0})) + 1, 30])
+  let modulePadding = min([max(map(copy(result), { i, r -> type(r.module) == v:t_string ? len(r.module) : 0})) + 1, 30])
+  for res in result
+    let llentry = {}
+    if (has_key(res, "definedAt") && type(res.definedAt) == v:t_dict)
+      let llentry.lnum = res.definedAt.start[0]
+      let llentry.col = res.definedAt.start[1]
+      let bufnr = bufnr(res.definedAt.name)
+      if bufnr != -1
+	let llentry.bufnr = bufnr
+      endif
+      let llentry.filename = printf("%-" . filePadding . "s", res.definedAt.name)
+    endif
+    let module = get(res, "module", "")
+    if empty(module)
+      let module = ""
+    endif
+    let llentry.module = printf("%-" . modulePadding . "s", module)
+    let llentry.text = printf("%s %s", res.identifier, res.type)
+    call add(llist, llentry)
+  endfor
+  " echom json_encode(a:resp)
+  call setloclist(0, llist)
+  call setloclist(0, [], 'a', {'title': 'PureScript Search'})
+  lopen
+endfun
 
 " PSCIDE HELPER FUNCTION -----------------------------------------------------
 " Issues the commands to the server
 " Is responsible for keeping track of whether or not we have a running server
 " and (re)starting it if not
 " Also serializes and deserializes from/to JSON
+<<<<<<< HEAD
 function! s:callPscIde(input, errorm, isRetry)
   call s:log("callPscIde: start: Executing command: " . string(a:input), 3)
 
@@ -772,38 +1188,72 @@ function! s:callPscIde(input, errorm, isRetry)
       call s:log("callPscIde: Server still can't be contacted, aborting...", 1)
       return
     endif
+=======
+" ADD IMPORTS  --------------------------------------------------------------
+fun! PSCIDEimportModule(module)
+  let args = filter(split(a:module, ' '), { idx, p -> p != ' ' })
+  if len(args) >= 2
+    let importCommand =
+	  \ { "importCommand": "addQualifiedImport"
+	  \ , "module": args[0]
+	  \ , "qualifier": args[1]
+	  \ }
+  else
+    let importCommand =
+	  \ { "importCommand": "addImplicitImport"
+	  \ , "module": args[0]
+	  \ }
+>>>>>>> 4941d3958f71245863d55b678d39a7a2e9a324d6
   endif
 
-  let enc = s:jsonEncode(a:input)
-  let resp = s:mysystem("psc-ide-client -p " . g:psc_ide_server_port, enc)
-  call s:log("callPscIde: Raw response: " . resp, 3)
+  call purescript#ide#utils#update()
 
-  if resp =~? "connection refused"  "TODO: This check is probably not crossplatform
-    let s:pscidestarted = 0
-    let s:pscideexternal = 0
+  let params =
+	\ { "file": expand("%:p")
+	\ , "importCommand": importCommand
+	\ }
+  call purescript#ide#call(
+	\ { "command": "import" , "params": params }
+	\ , "failed to add import",
+	\ 0,
+	\ function("s:PSCIDEimportModuleCallback"),
+	\ v:true
+	\ )
+endfun
 
-    if a:isRetry
-      call s:log("callPscIde: Error: Failed to contact server", 0)
-    endif
-    if !a:isRetry
-      " Seems saving often causes psc-ide-server to crash. Haven't been able
-      " to figure out why. It doesn't crash when I run it externally...
-      " retrying is then the next best thing
-      return s:callPscIde(a:input, a:errorm, 1) " Keeping track of retries so we only retry once
-    endif
+fun! s:PSCIDEimportModuleCallback(resp)
+  if type(a:resp) == v:t_dict && a:resp.resultType ==# "success"
+    let view = winsaveview()
+    %d_
+    call append(0, a:resp.result)
+    $d_
+    let view.lnum += 1
+    let view.topline += 1
+    call winrestview(view)
+  else
+    call purescript#ide#utils#error(get(a:resp, "result", "error"))
   endif
 
-  let decoded = PscIdeDecodeJson(s:CleanEnd(s:StripNewlines(resp)))
-  call s:log("callPscIde: Decoded response: " . string(decoded), 3)
+  " trigger PSCIDErebuild
+  call purescript#ide#utils#update()
+  call PSCIDErebuild(v:true, "", function("PSCIDEerrors"))
+endfun
 
-  if (type(decoded) != type({}) || decoded['resultType'] !=# 'success') 
-      \ && type(a:errorm) == type("")
-    call s:log("callPscIde: Error: " . a:errorm, 0)
+fun! PSCIDEimportModuleCompletion(ArgLead, CmdLine, CursorPos)
+  let resp = purescript#ide#callSync(
+	\ {'command': 'list', 'params': {'type': 'loadedModules'}},
+	\ 'Failed to get loaded modules',
+	\ 0
+	\ )
+  if type(resp) == v:t_dict && resp.resultType == "success"
+    return join(resp.result, "\n")
+  else
+    return ""
   endif
-  return decoded
-endfunction
+endfun
 
 " UTILITY FUNCTIONS ----------------------------------------------------------
+
 function! s:StripNewlines(s)
   return substitute(a:s, '\s*\n\s*', ' ', 'g')
 endfunction
@@ -812,175 +1262,113 @@ function! s:CleanEnd(s)
   return substitute(a:s, '\s*\n*\s*$', '', 'g')
 endfunction
 
-function! s:GetWordUnderCursor()
-  return expand("<cword>")
-endfunction
-
-function! s:log(str, level)
-  if g:psc_ide_log_level >= a:level
-    echom a:str
-  endif
-endfunction
-
 " INIT -----------------------------------------------------------------------
-" Automatically load the module we just opened
-"augroup PscIdeAutoLoad
-  "au!
-  "autocmd BufEnter *.purs call s:AutoLoad()
-  "autocmd BufWritePost *.purs call s:AutoLoad()
-"augroup END
-"function! s:AutoLoad()
-  "if s:pscidestarted == 1
-    "call PSCIDEload(1)
-  "endif
-"endfunction
+function! PSCIDEerrors(llist, ...)
+  if a:0 > 1
+    let silent = a:1
+  else
+    let silent = v:false
+  endif
 
-" Automatically close the server when leaving vim
-augroup PscideShutDown
-  au!
-  autocmd VimLeavePre * call s:Shutdown()
-augroup END
-function! s:Shutdown()
-  silent PSCIDEend
+  let filePadding = min([max(map(copy(a:llist), { i, r -> type(r.filename) == v:t_string ? len(r.filename) : 0})) + 1, 30])
+  let modulePadding = min([max(map(copy(a:llist), { i, r -> type(r.module) == v:t_string ? len(r.module) : 0})) + 1, 30])
+
+  let qfList = []
+  for e in a:llist
+    if e.bufnr != -1
+      let text = split(e.text, '\n')
+      call add(
+	    \ qfList
+	    \ , { "bufnr": e.bufnr
+	    \   , "filename": printf("%-" . filePadding . "s", e.filename)
+	    \	, "module": empty(e.module) ? e.module : printf("%-" . modulePadding . "s", e.module)
+	    \   , "lnum": e.lnum
+	    \   , "col": e.col
+	    \   , "text": text[0]
+	    \   , "type": e.type
+	    \   }
+	    \ )
+      for line in text[1:]
+	call add(qfList, {"text": line})
+      endfor
+    endif
+  endfor
+  if !silent && g:psc_ide_notify
+    let errsLen = len(filter(copy(qfList), { n, e -> get(e, "type", "") ==# "E" || get(e, "type", "") ==# "F" }))
+    let wrnLen = len(filter(copy(qfList), { n, e -> get(e, "type", "") ==# "W" || get(e, "type", "") ==# "V" }))
+    if errsLen > 0
+      echohl ErrorMsg
+      echom "purs: " . errsLen . " " . (errsLen == 1 ? "error" : "errors")
+      echohl Normal
+    elseif wrnLen > 0
+      echohl WarningMsg
+      echom "purs: " . wrnLen . " ". (wrnLen == 1 ? "warning" : "warnings")
+      echohl Normal
+    else
+      call purescript#ide#utils#log("success")
+    endif
+  endif
+  call setqflist(qfList)
+  call setqflist([], 'a', {'title': 'PureScript Errors'})
 endfunction
 
-" " Automatic import after completion
-" function! s:completeDone(item)
-"   if g:psc_ide_auto_imports == 0
-"     return
-"   endif
-"   if (type(a:item) == type({}) 
-"         \ && has_key(a:item, 'word') && type(a:item.word) == type("") 
-"         \ && has_key(a:item, 'info')) && type(a:item.info) == type("")
-"     call s:importIdentifier(a:item.word, a:item.info)
-"   endif
-" endfunction
-" augroup PscideAfterCompletion
-"   autocmd CompleteDone * call s:completeDone(v:completed_item)
-" augroup END
-
-
-
-
-
-fun! s:jsonNULL()
-  return {'json_special_value': 'null'}
-endf
-fun! s:jsonTrue()
-  return {'json_special_value': 'true'}
-endf
-fun! s:jsonFalse()
-  return {'json_special_value': 'false'}
-endf
-fun! s:jsonToJSONBool(i)
-  return  a:i ? s:jsonTrue() : s:jsonFalse()
-endf
-
-fun! s:jsonEncode(thing, ...)
-  let nl = a:0 > 0 ? (a:1 ? "\n" : "") : ""
-  if type(a:thing) == type("")
-    return '"'.escape(a:thing,'"\').'"'
-  elseif type(a:thing) == type({}) && !has_key(a:thing, 'json_special_value')
-    let pairs = []
-    for [Key, Value] in items(a:thing)
-      call add(pairs, s:jsonEncode(Key).':'.s:jsonEncode(Value))
-      unlet Key | unlet Value
-    endfor
-    return "{".nl.join(pairs, ",".nl)."}"
-  elseif type(a:thing) == type(0)
-    return a:thing
-  elseif type(a:thing) == type([])
-    return '['.join(map(copy(a:thing), "s:jsonEncode(v:val)"),",").']'
-    return 
-  elseif string(a:thing) == string(s:jsonNULL())
-    return "null"
-  elseif string(a:thing) == string(s:jsonTrue())
-    return "true"
-  elseif string(a:thing) == string(s:jsonFalse())
-    return "false"
-  else
-    throw "unexpected new thing: ".string(a:thing)
-  endif
-endf
-
-" Parse Errors & Suggestions ------------------------------------------
-" Returns { error :: String, 
-"           llist :: Array (String in errorformat), 
-"           suggestions :: StrMap { startLine :: Int,
-"                                  startColumn :: Int,
-"                                  endLine :: Int,
-"                                  endColumn :: Int,
-"                                  filename :: String,
-"                                  replacement :: String } }
-" Key of suggestions = <filename>|<linenr>
-function! ParsePscJsonOutput(errors, warnings)
-  let out = []
+" Parse Errors & Suggestions -------------------------------------------------
+function! s:qfList(filename, errors, resultType)
+  let qfList = []
   let suggestions = {}
 
-  for e in a:warnings
-    try
-      call s:addEntry(out, suggestions, 0, e)
-    catch /\m^Vim\%((\a\+)\)\=:E716/
-      return {'error': 'ParsePscJsonOutput: unrecognized warning format', 
-            \ 'llist': [], 
-            \ 'suggestions': []}
-    endtry
-  endfor
   for e in a:errors
-    try
-      call s:addEntry(out, suggestions, 1, e)
-    catch /\m^Vim\%((\a\+)\)\=:E716/
-      return {'error': 'ParsePscJsonOutput: unrecognized error format', 
-            \ 'llist': [], 
-            \ 'suggestions': []}
-    endtry
+    call add(qfList, s:qfEntry(e, a:filename, a:resultType ==# "error"))
+    if type(get(e, "suggestion", v:null)) == v:t_dict
+      call s:addSuggestion(suggestions, e)
+    endif
   endfor
 
-  return {'error': "", 'llist': out, 'suggestions': suggestions}
+  call sort(qfList, { e1, e2 -> e1["lnum"] == e2["lnum"] ? e1["col"] - e2["col"] : e1["lnum"] - e2["lnum"] })
+  return {"qfList": qfList, "suggestions": suggestions}
 endfunction
 
-function! s:addEntry(out, suggestions, err, e)
-  let hasSuggestion = exists("a:e.suggestion") && type(a:e.suggestion) == type({}) &&
-                    \ exists("a:e.position") && type(a:e.position) == type({})
+function! s:qfEntry(e, filename, err)
   let isError = a:err == 1
-  let letter = isError ? (hasSuggestion ? 'F' : 'E') : (hasSuggestion ? 'V' : 'W')
-  let startL = (exists("a:e.position") && type(a:e.position) == type({}))
-               \ ? a:e.position.startLine : 1
-  let startC = (exists("a:e.position") && type(a:e.position) == type({}))
-               \ ? a:e.position.startColumn : 1
-  let msg = join([letter, 
-                \ a:e.filename, 
-                \ startL,
-                \ startC,
-                \ s:cleanupMessage(a:e.message)], ":")
-
-  call add(a:out, msg)
-
-  if hasSuggestion
-    call s:addSuggestion(a:suggestions, a:e)
+  let hasSuggestion = type(get(a:e, "suggestion", v:null)) == v:t_dict
+  let type = isError ? (hasSuggestion ? 'F' : 'E') : (hasSuggestion ? 'V' : 'W')
+  let lnum = has_key(a:e, "position") && type(a:e.position) == v:t_dict
+	\ ? a:e.position.startLine : 1
+  let lnumend = has_key(a:e, "position") && type(a:e.position) == v:t_dict
+  \ ? a:e.position.endLine : 1
+  let col = has_key(a:e, "position") && type(a:e.position) == v:t_dict
+	\ ? a:e.position.startColumn : 1
+  let colend = has_key(a:e, "position") && type(a:e.position) == v:t_dict
+  \ ? a:e.position.endColumn : 1
+  let module = get(a:e, "moduleName", "")
+  if empty(module)
+    let module = ""
   endif
+  return  { "filename": a:filename
+	\ , "module": module
+	\ , "bufnr": bufnr(a:filename)
+	\ , "lnum": lnum
+	\ , "lnumend": lnumend
+	\ , "col": col
+	\ , "colend": colend
+	\ , "text": a:e.message
+	\ , "type": type
+	\ }
 endfunction
 
 function! s:addSuggestion(suggestions, e)
-  let sugg = {'startLine':   a:e['position']['startLine'], 
-             \'startColumn': a:e['position']['startColumn'], 
-             \'endLine':     a:e['position']['endLine'], 
-             \'endColumn':   a:e['position']['endColumn'], 
-             \'filename':    a:e['filename'],
-             \'replacement': a:e['suggestion']['replacement']}
-
-   let a:suggestions[a:e.filename . "|" . string(a:e.position.startLine)] = sugg
+   let a:suggestions[a:e.filename . "|" . string(a:e.position.startLine)] = a:e.suggestion
 endfunction
 
-function! s:cleanupMessage(str)
-    let transformations = [ ['\s*\n\+\s*', ' '], ['(\s', '('], ['\s)', ')'], ['\s\,', ','] ]
-    let out = a:str
-    for t in transformations
-        let out = substitute(out, t[0], t[1], 'g')
-    endfor
-    return out
-endfunction
+fun! PSCIDEgetKeyword()
+  let isk = &l:isk
+  setl isk+=<,>,$,#,+,-,*,/,%,',&,=,!,:,124,~,?,^
+  let keyword = expand("<cword>")
+  let &l:isk = isk
+  return keyword
+endfun
 
+<<<<<<< HEAD
 function! PscIdeDecodeJson(json) abort
   if a:json ==# ''
       return []
@@ -1054,3 +1442,7 @@ function Rand()
     return str2nr(matchstr(reltimestr(reltime()), '\v\.@<=\d+')[3:])
 endfunction
 
+=======
+" AUTOSTART ------------------------------------------------------------------
+call s:autoStart()
+>>>>>>> 4941d3958f71245863d55b678d39a7a2e9a324d6
