@@ -231,7 +231,7 @@ function! PSCIDEstart(silent)
     let g:psc_ide_server_port = s:getIdePort(dir)
   endif
 
-  call s:log("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .  g:psc_ide_server_port, loglevel)
+  call purescript#ide#utils#debug("PSCIDEstart: Starting psc-ide-server at " . dir . " on port " .  g:psc_ide_server_port, loglevel)
   let command = [ 
 	\ "purs", "ide", "server",
 	\ "-p", g:psc_ide_server_port,
@@ -1132,63 +1132,6 @@ endfun
 " Is responsible for keeping track of whether or not we have a running server
 " and (re)starting it if not
 " Also serializes and deserializes from/to JSON
-<<<<<<< HEAD
-function! s:callPscIde(input, errorm, isRetry)
-  call s:log("callPscIde: start: Executing command: " . string(a:input), 3)
-
-  if s:projectvalid == 0
-    call PSCIDEprojectValidate()
-  endif
-
-  if s:pscidestarted == 0
-
-    let expectedCWD = s:findFileRecur('bower.json')
-    let cwdcommand = {'command': 'cwd'}
-
-    call s:log("callPscIde: No server found, looking for external server", 1)
-    let cwdresp = s:mysystem("psc-ide-client -p " . g:psc_ide_server_port, s:jsonEncode(cwdcommand))
-    call s:log("callPscIde: Raw response of trying to reach external server: " . cwdresp, 1)
-    let cwdrespDecoded = PscIdeDecodeJson(s:StripNewlines(cwdresp))
-    call s:log("callPscIde: Decoded response of trying to reach external server: " 
-                \ . string(cwdrespDecoded), 1)
-
-    if type(cwdrespDecoded) == type({}) && cwdrespDecoded.resultType ==# 'success'
-      call s:log("callPscIde: Found external server with cwd: " . string(cwdrespDecoded.result), 1)
-      call s:log("callPscIde: Expecting CWD: " . expectedCWD, 1)
-
-      if expectedCWD != cwdrespDecoded.result
-        call s:log("callPscIde: External server on incorrect CWD, closing", 1)
-        PSCIDEend
-        call s:log("callPscIde: Starting new server", 1)
-        call PSCIDEstart(1)
-      else
-        call s:log("callPscIde: External server CWD matches with what we need", 1)
-        let s:pscidestarted = 1
-        let s:pscideexternal = 1
-      endif
-    else
-      call s:log("callPscIde: No external server found, starting new server", 1)
-      call PSCIDEstart(1)
-    endif
-
-    call s:log("callPscIde: Trying to reach server again", 1)
-    let cwdresp2 = s:mysystem("psc-ide-client -p " . g:psc_ide_server_port, s:jsonEncode(cwdcommand))
-    call s:log("callPscIde: Raw response of trying to reach server again: " . cwdresp2, 1)
-    let cwdresp2Decoded = PscIdeDecodeJson(s:StripNewlines(cwdresp2))
-    call s:log("callPscIde: Decoded response of trying to reach server again: " 
-               \ . string(cwdresp2Decoded), 1)
-
-    if type(cwdresp2Decoded) == type({}) && cwdresp2Decoded.resultType ==# 'success' 
-       \ && cwdresp2Decoded.result == expectedCWD
-      call s:log("callPscIde: Server successfully contacted! Loading current module.", 1)
-      let s:pscidestarted = 1
-      let s:pscideexternal = 1
-      call PSCIDEload(1)
-    else
-      call s:log("callPscIde: Server still can't be contacted, aborting...", 1)
-      return
-    endif
-=======
 " ADD IMPORTS  --------------------------------------------------------------
 fun! PSCIDEimportModule(module)
   let args = filter(split(a:module, ' '), { idx, p -> p != ' ' })
@@ -1203,7 +1146,6 @@ fun! PSCIDEimportModule(module)
 	  \ { "importCommand": "addImplicitImport"
 	  \ , "module": args[0]
 	  \ }
->>>>>>> 4941d3958f71245863d55b678d39a7a2e9a324d6
   endif
 
   call purescript#ide#utils#update()
@@ -1368,31 +1310,6 @@ fun! PSCIDEgetKeyword()
   return keyword
 endfun
 
-<<<<<<< HEAD
-function! PscIdeDecodeJson(json) abort
-  if a:json ==# ''
-      return []
-  endif
-
-  if substitute(a:json, '\v\"%(\\.|[^"\\])*\"|true|false|null|[+-]?\d+%(\.\d+%([Ee][+-]?\d+)?)?', '', 'g') !~# "[^,:{}[\\] \t]"
-      " JSON artifacts
-      let true = 1
-      let false = 0
-      let null = ''
-
-      try
-          let object = eval(a:json)
-      catch
-          " malformed JSON
-          let object = ''
-      endtry
-  else
-      let object = ''
-  endif
-
-  return object
-endfunction
-
 function! s:mysystem(a, b)
   return system(a:a, a:b . "\n")
 endfunction
@@ -1442,7 +1359,5 @@ function Rand()
     return str2nr(matchstr(reltimestr(reltime()), '\v\.@<=\d+')[3:])
 endfunction
 
-=======
 " AUTOSTART ------------------------------------------------------------------
 call s:autoStart()
->>>>>>> 4941d3958f71245863d55b678d39a7a2e9a324d6
